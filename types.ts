@@ -15,7 +15,8 @@ export interface GeneratedCard {
     village?: string;   // Kelurahan/Desa
     district?: string;  // Kecamatan
     city: string;
-    state: string;
+    state: string;      // Used for state/province
+    province?: string;  // Explicit province for ID
     zipCode: string;
     country: string;
   };
