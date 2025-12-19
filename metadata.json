@@ -1,0 +1,5 @@
+{
+  "name": "Dev Card",
+  "description": "A developer tool to generate valid Luhn-algorithm test credit card numbers for game simulations and testing environments.",
+  "requestFramePermissions": []
+}
