@@ -1,5 +1,11 @@
 import React, { useState, useEffect, useMemo, useCallback, memo } from 'react';
-import { Copy, RefreshCw, AlertTriangle, Terminal, Database, Download, Check, Sparkles, LayoutGrid, List, CreditCard, Globe, MapPin, Phone, User, Building2, Eye, FileText, ToggleLeft, ToggleRight, Search, ShieldCheck } from 'lucide-react';
+import { 
+  Copy, RefreshCw, AlertTriangle, Terminal, Database, Download, Check, Sparkles, 
+  LayoutGrid, List, CreditCard, Globe, MapPin, Phone, User, Landmark, 
+  Zap, Search, ShieldCheck, Settings2, Filter, Share2, Eye, FileText, 
+  ToggleLeft, ToggleRight, Info, Layers, Navigation, Box, Smartphone
+} from 'lucide-react';
+import { GoogleGenAI } from "@google/genai";
 import { generateCards, getScheme } from './utils/generator';
 import { GeneratedCard, CountryCode } from './types';
 import { VisualCard } from './components/VisualCard';
@@ -7,612 +13,503 @@ import { VisualCard } from './components/VisualCard';
 type ViewMode = 'list' | 'grid';
 
 const COUNTRIES: { code: CountryCode; name: string; flag: string }[] = [
-  { code: 'US', name: 'United States', flag: '🇺🇸' },
   { code: 'ID', name: 'Indonesia', flag: '🇮🇩' },
+  { code: 'US', name: 'United States', flag: '🇺🇸' },
   { code: 'GB', name: 'United Kingdom', flag: '🇬🇧' },
   { code: 'JP', name: 'Japan', flag: '🇯🇵' },
   { code: 'CN', name: 'China', flag: '🇨🇳' },
   { code: 'IN', name: 'India', flag: '🇮🇳' },
 ];
 
-// --- Memoized Sub-components for Performance ---
+const BIN_LIBRARY = [
+  { label: 'MASTERCARD ID', bin: '551827706', desc: 'Central Asia • Premium', color: 'text-orange-400', icon: Box },
+  { label: 'VISA INFINITE US', bin: '453978', desc: 'Chase Bank • Elite', color: 'text-sky-400', icon: Zap },
+  { label: 'AMEX GOLD US', bin: '371449', desc: 'Membership Rewards', color: 'text-emerald-400', icon: Sparkles },
+  { label: 'JCB PRECIOUS JP', bin: '353011', desc: 'Mizuho Bank • Luxury', color: 'text-rose-400', icon: Globe },
+  { label: 'RUPAY PLATINUM IN', bin: '508534', desc: 'National Payments • IN', color: 'text-green-400', icon: Database },
+];
 
-const GridItem = memo(({ card, bin, detailedBilling, copiedId, onCopy }: { card: GeneratedCard, bin: string, detailedBilling: boolean, copiedId: string | null, onCopy: (c: GeneratedCard) => void }) => {
+const fetchBinIntelligence = async (bin: string) => {
+  if (bin.length < 6) return null;
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: `Provide JSON info for credit card BIN ${bin}. Include "bank", "type" (Credit/Debit), "level" (Platinum/Gold/Standard), "brand", and "country". Return ONLY raw JSON.`,
+      config: { responseMimeType: "application/json" }
+    });
+    return JSON.parse(response.text || '{}');
+  } catch (error) {
+    console.error("Intelligence node unreachable", error);
+    return null;
+  }
+};
+
+const GridItem = memo(({ card, bin, detailedBilling, copiedId, onCopy, bankName }: { card: GeneratedCard, bin: string, detailedBilling: boolean, copiedId: string | null, onCopy: (c: GeneratedCard) => void, bankName?: string }) => {
     return (
         <div className="animate-fade-in flex flex-col gap-3 group">
             <VisualCard 
                 bin={bin} 
                 previewCard={card} 
-                className="shadow-xl"
+                bankName={bankName}
+                className="shadow-2xl shadow-black/40"
                 onClick={() => onCopy(card)}
                 isCopied={copiedId === card.id}
             />
             
-            {/* Grid Identity Panel */}
-            <div className="bg-slate-900/40 border border-white/5 rounded-xl p-3 backdrop-blur-sm group-hover:bg-slate-800/40 transition-colors">
-                <div className="flex items-start gap-3">
-                    <div className="w-8 h-8 rounded-full bg-indigo-500/20 flex items-center justify-center shrink-0 border border-indigo-500/30">
-                        <User className="w-4 h-4 text-indigo-400" />
+            <div className="glass-card rounded-2xl p-4 transition-all duration-300 group-hover:bg-slate-900/80 group-hover:border-sky-500/20 group-hover:translate-y-[-2px]">
+                <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-xl bg-sky-500/10 flex items-center justify-center shrink-0 border border-sky-500/20 group-hover:scale-110 transition-transform">
+                        <User className="w-5 h-5 text-sky-400" />
                     </div>
                     <div className="min-w-0 flex-1">
-                        <p className="text-xs font-bold text-white truncate">{card.holderName}</p>
-                        <p className="text-[10px] text-slate-500 truncate flex items-center gap-1 mt-0.5">
-                            <Phone className="w-2.5 h-2.5" /> {card.phone}
-                        </p>
+                        <p className="text-sm font-bold text-white truncate leading-none mb-1.5">{card.holderName}</p>
+                        <div className="flex items-center gap-2 text-[10px] text-slate-500 font-mono">
+                            <Smartphone className="w-3 h-3 text-sky-500/50" /> {card.phone}
+                        </div>
                     </div>
+                    <button onClick={() => onCopy(card)} className="p-2 rounded-lg bg-white/5 hover:bg-sky-500/20 text-slate-500 hover:text-sky-400 transition-colors">
+                       <Copy className="w-4 h-4" />
+                    </button>
                 </div>
                 
-                {detailedBilling ? (
-                    <div className="mt-3 pt-3 border-t border-white/5 grid grid-cols-1 gap-y-2 text-[10px]">
-                        <div className="grid grid-cols-3 gap-1">
-                            <span className="text-slate-500">Street</span>
-                            <span className="col-span-2 text-slate-300 truncate">{card.address.street}</span>
-                        </div>
-                        {card.address.street2 && (
-                            <div className="grid grid-cols-3 gap-1">
-                                <span className="text-slate-500">Unit</span>
-                                <span className="col-span-2 text-slate-300 truncate">{card.address.street2}</span>
+                <div className="mt-4 pt-4 border-t border-white/5 space-y-2.5">
+                    {detailedBilling ? (
+                        <div className="grid grid-cols-1 gap-2 text-[11px]">
+                            <div className="flex items-center gap-3 text-slate-400">
+                                <Navigation className="w-3.5 h-3.5 text-sky-500/40" />
+                                <span className="truncate">{card.address.street} {card.address.street2}</span>
                             </div>
-                        )}
-                        {card.address.rt_rw && (
-                            <div className="grid grid-cols-3 gap-1">
-                                <span className="text-slate-500">RT/RW</span>
-                                <span className="col-span-2 text-slate-300 truncate">{card.address.rt_rw}</span>
+                            {card.address.rt_rw && (
+                                <div className="flex items-center gap-3 text-slate-400 pl-6.5">
+                                   <div className="w-1 h-1 rounded-full bg-sky-500/30 mr-2"></div>
+                                   <span className="text-[10px]">{card.address.rt_rw} • {card.address.village}</span>
+                                </div>
+                            )}
+                            <div className="flex items-center gap-3 text-slate-400 pl-6.5">
+                                <div className="w-1 h-1 rounded-full bg-sky-500/30 mr-2"></div>
+                                <span>{card.address.district}</span>
                             </div>
-                        )}
-                        {card.address.village && (
-                            <div className="grid grid-cols-3 gap-1">
-                                <span className="text-slate-500">Village</span>
-                                <span className="col-span-2 text-slate-300 truncate">{card.address.village}</span>
+                            <div className="flex items-center gap-3 text-slate-300 font-semibold bg-sky-500/5 p-2 rounded-lg">
+                                <MapPin className="w-3.5 h-3.5 text-sky-500" />
+                                <span className="truncate">{card.address.city}, {card.address.zipCode}</span>
                             </div>
-                        )}
-                        {card.address.district && (
-                            <div className="grid grid-cols-3 gap-1">
-                                <span className="text-slate-500">District</span>
-                                <span className="col-span-2 text-slate-300 truncate">{card.address.district}</span>
-                            </div>
-                        )}
-                        <div className="grid grid-cols-3 gap-1">
-                            <span className="text-slate-500">City</span>
-                            <span className="col-span-2 text-slate-300 truncate">{card.address.city}</span>
                         </div>
-                        <div className="grid grid-cols-3 gap-1">
-                            <span className="text-slate-500">Zip</span>
-                            <span className="col-span-2 text-slate-300 font-mono">{card.address.zipCode}</span>
+                    ) : (
+                        <div className="flex items-center gap-3 text-[11px] text-slate-400">
+                            <MapPin className="w-3.5 h-3.5 text-sky-500/40 shrink-0" />
+                            <span className="truncate">{card.address.city}, {card.address.country}</span>
                         </div>
-                    </div>
-                ) : (
-                    <div className="mt-2 pt-2 border-t border-white/5 text-[10px] text-slate-400 leading-relaxed flex flex-col gap-1">
-                        <div className="flex gap-2">
-                            <MapPin className="w-3 h-3 shrink-0 mt-0.5 text-slate-500" />
-                            <span className="line-clamp-2">
-                            {card.address.street}
-                            </span>
-                        </div>
-                        <div className="pl-5 text-slate-500 truncate">
-                            {card.address.city}, {card.address.state}
-                        </div>
-                    </div>
-                )}
+                    )}
+                </div>
             </div>
         </div>
     );
 });
 
-const ListItem = memo(({ card, index, detailedBilling, copiedId, onCopy }: { card: GeneratedCard, index: number, detailedBilling: boolean, copiedId: string | null, onCopy: (c: GeneratedCard) => void }) => {
-    return (
-        <tr className="group hover:bg-indigo-500/[0.03] transition-colors duration-200">
-            <td className="px-6 py-4 align-top">
-                <div className="flex items-start gap-3">
-                    <span className="text-slate-700 font-mono text-xs w-5 pt-0.5 text-right select-none">{index + 1}</span>
-                    <div>
-                        <div className="font-bold text-slate-200 text-sm group-hover:text-indigo-300 transition-colors">
-                            {card.holderName}
-                        </div>
-                        <div className="text-[10px] uppercase tracking-wider text-slate-500 font-mono mt-1">
-                            {card.scheme} • {card.address.country}
-                        </div>
-                        <div className="md:hidden mt-2 space-y-1">
-                            <p className="text-xs text-slate-400 font-mono flex items-center gap-1.5"><CreditCard className="w-3 h-3"/> {card.number}</p>
-                        </div>
-                    </div>
-                </div>
-            </td>
-            <td className="px-6 py-4 hidden md:table-cell align-top">
-                {detailedBilling ? (
-                    <div className="grid grid-cols-2 gap-x-8 gap-y-1 text-xs text-slate-400">
-                        <div className="flex flex-col">
-                            <span className="text-[10px] uppercase text-slate-600">Street</span>
-                            <span className="text-slate-300">{card.address.street} {card.address.street2}</span>
-                        </div>
-                        <div className="flex flex-col">
-                            <span className="text-[10px] uppercase text-slate-600">City/State</span>
-                            <span className="text-slate-300">{card.address.city}, {card.address.state}</span>
-                        </div>
-                        {(card.address.rt_rw || card.address.village || card.address.district) && (
-                            <div className="flex flex-col col-span-2 mt-1">
-                                <span className="text-[10px] uppercase text-slate-600">Local Area</span>
-                                <span className="text-slate-300">
-                                    {[card.address.rt_rw, card.address.village, card.address.district].filter(Boolean).join(', ')}
-                                </span>
-                            </div>
-                        )}
-                        <div className="flex flex-col mt-1">
-                            <span className="text-[10px] uppercase text-slate-600">Zip Code</span>
-                            <span className="font-mono text-slate-300">{card.address.zipCode}</span>
-                        </div>
-                        <div className="flex flex-col mt-1">
-                            <span className="text-[10px] uppercase text-slate-600">Phone</span>
-                            <span className="font-mono text-slate-300">{card.phone}</span>
-                        </div>
-                    </div>
-                ) : (
-                    <div className="space-y-1.5">
-                        <div className="flex items-center gap-2 text-xs text-slate-300">
-                            <Phone className="w-3 h-3 text-slate-500" />
-                            <span className="font-mono">{card.phone}</span>
-                        </div>
-                        <div className="flex items-start gap-2 text-xs text-slate-400 leading-snug">
-                            <MapPin className="w-3 h-3 text-slate-500 shrink-0 mt-0.5" />
-                            <span>
-                                {card.address.street}{card.address.street2 && `, ${card.address.street2}`}
-                                <br/>{card.address.city}, {card.address.state}
-                            </span>
-                        </div>
-                    </div>
-                )}
-            </td>
-            <td className="px-6 py-4 text-center hidden sm:table-cell align-top">
-                <div className="inline-block text-left bg-slate-900/50 p-2 rounded border border-white/5">
-                    <div className="font-mono text-slate-200 text-xs tracking-wider">
-                        {card.number}
-                    </div>
-                    <div className="flex justify-between mt-1 text-[10px] text-slate-500 font-mono">
-                        <span>EXP: {card.expiryMonth}/{card.expiryYear.slice(-2)}</span>
-                        <span className="text-yellow-600">CVV: {card.cvv}</span>
-                    </div>
-                </div>
-            </td>
-            <td className="px-6 py-4 text-right align-top">
-                <button
-                    onClick={() => onCopy(card)}
-                    className={`p-2 rounded-lg transition-all duration-300 border ${
-                        copiedId === card.id 
-                        ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' 
-                        : 'bg-transparent border-transparent text-slate-500 hover:text-indigo-300 hover:bg-indigo-500/10 hover:border-indigo-500/20'
-                    }`}
-                    title={detailedBilling ? "Copy detailed profile" : "Copy simplified card data"}
-                >
-                    {copiedId === card.id ? <Check className="w-4 h-4 scale-110" /> : (detailedBilling ? <FileText className="w-4 h-4" /> : <Copy className="w-4 h-4" />)}
-                </button>
-            </td>
-        </tr>
-    );
-});
-
 function App() {
   const [bin, setBin] = useState('551827706');
-  const [quantity, setQuantity] = useState(5);
+  const [quantity, setQuantity] = useState(6);
   const [country, setCountry] = useState<CountryCode>('ID');
   const [cards, setCards] = useState<GeneratedCard[]>([]);
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [generatedAt, setGeneratedAt] = useState<Date>(new Date());
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
-  const [detailedBilling, setDetailedBilling] = useState(false);
+  const [detailedBilling, setDetailedBilling] = useState(true);
+  const [intel, setIntel] = useState<any>(null);
+  const [isIntelLoading, setIsIntelLoading] = useState(false);
 
-  // Initial generation
   useEffect(() => {
-    // Generate instantly on mount
-    const newCards = generateCards(bin, quantity, country);
-    setCards(newCards);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    handleGenerate();
+    handleIntelLookup(bin);
   }, []);
 
-  // Performance: Removed artificial delay (setTimeout) for instant response
+  const handleIntelLookup = async (lookupBin: string) => {
+    if (lookupBin.length < 6) {
+        setIntel(null);
+        return;
+    }
+    setIsIntelLoading(true);
+    const data = await fetchBinIntelligence(lookupBin);
+    setIntel(data);
+    setIsIntelLoading(false);
+  };
+
   const handleGenerate = useCallback(() => {
     const newCards = generateCards(bin, quantity, country);
     setCards(newCards);
-    setGeneratedAt(new Date());
   }, [bin, quantity, country]);
 
   const setTemplate = (templateBin: string) => {
     setBin(templateBin);
-    // Auto generate when template clicked for better UX
+    handleIntelLookup(templateBin);
     const newCards = generateCards(templateBin, quantity, country);
     setCards(newCards);
-    setGeneratedAt(new Date());
   };
 
-  // Live BIN Analysis
-  const binAnalysis = useMemo(() => {
-    if (bin.length < 6) return null;
-    const scheme = getScheme(bin.padEnd(16, '0'));
-    
-    let industry = 'Unknown';
-    const firstDigit = bin[0];
-    if (firstDigit === '3') industry = 'Travel & Entertainment';
-    if (firstDigit === '4' || firstDigit === '5') industry = 'Banking & Financial';
-    if (firstDigit === '6') industry = 'Merchandising & Banking';
-    if (firstDigit === '8') industry = 'Telecommunications';
-
-    return { scheme, industry };
-  }, [bin]);
-
   const copyToClipboard = useCallback((card: GeneratedCard) => {
-    let text = "";
-
+    let text = `${card.number}|${card.expiryMonth}/${card.expiryYear.slice(-2)}|${card.cvv}|${card.holderName}`;
     if (detailedBilling) {
-        // Detailed Format
-        text = `--- IDENTITY PROFILE ---
-Full Name
-${card.holderName}
-
-Phone Number
-${card.phone}
-
---- BILLING ADDRESS ---
-Street Address
-${card.address.street}${card.address.street2 ? `\n${card.address.street2}` : ''}`;
-
-        if (card.address.rt_rw) text += `\n${card.address.rt_rw}`;
-        if (card.address.village) text += `\n\nKelurahan / Desa\n${card.address.village}`;
-        if (card.address.district) text += `\n\nKecamatan\n${card.address.district}`;
-
-        text += `\n\nCity / Regency\n${card.address.city}
-
-State / Province
-${card.address.state}
-
-Postal Code
-${card.address.zipCode}
-
-Country
-${card.address.country}
-
---- PAYMENT DETAILS ---
-Card Number: ${card.number}
-Expiry:      ${card.expiryMonth}/${card.expiryYear.slice(-2)}
-CVV:         ${card.cvv}
-Scheme:      ${card.scheme}`;
-    } else {
-        // Simplified Format
-        text = `${card.number}|${card.expiryMonth}/${card.expiryYear.slice(-2)}|${card.cvv}|${card.holderName}`;
+        text += `\nAddress: ${card.address.street} ${card.address.street2 || ''}, ${card.address.rt_rw || ''}, ${card.address.city}, ${card.address.zipCode}, ${card.address.country}`;
+        text += `\nPhone: ${card.phone}`;
+        if (intel?.bank) text += `\nBank: ${intel.bank}`;
     }
-    
     navigator.clipboard.writeText(text);
     setCopiedId(card.id);
     setTimeout(() => setCopiedId(null), 1500);
-  }, [detailedBilling]);
+  }, [detailedBilling, intel]);
 
-  const exportJSON = () => {
+  const exportJSON = useCallback(() => {
+    if (cards.length === 0) return;
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(cards, null, 2));
     const downloadAnchorNode = document.createElement('a');
     downloadAnchorNode.setAttribute("href", dataStr);
-    downloadAnchorNode.setAttribute("download", `devcard_v7_${country}_${bin}.json`);
+    downloadAnchorNode.setAttribute("download", `quantum_intel_${bin}.json`);
     document.body.appendChild(downloadAnchorNode);
     downloadAnchorNode.click();
     downloadAnchorNode.remove();
-  };
+  }, [cards, bin]);
 
   return (
-    <div className="min-h-screen font-sans p-4 md:p-6 lg:p-8 pb-20">
+    <div className="min-h-screen bg-slate-950 text-slate-200 font-sans selection:bg-sky-500/30 grid-pattern">
       
-      {/* Deep Space Background - Optimized */}
-      <div className="fixed top-0 left-0 w-full h-full overflow-hidden pointer-events-none -z-10 bg-[#020617]">
-        <div className="absolute top-[-10%] left-[20%] w-[50%] h-[50%] bg-indigo-900/10 blur-[120px] rounded-full"></div>
-        <div className="absolute bottom-[-10%] right-[10%] w-[40%] h-[40%] bg-blue-900/10 blur-[120px] rounded-full"></div>
+      {/* Immersive BG Effects */}
+      <div className="fixed inset-0 pointer-events-none -z-10 overflow-hidden">
+        <div className="absolute -top-[10%] -left-[10%] w-[60%] h-[60%] bg-sky-900/10 blur-[180px] rounded-full animate-pulse-slow"></div>
+        <div className="absolute -bottom-[10%] -right-[10%] w-[60%] h-[60%] bg-indigo-900/10 blur-[180px] rounded-full animate-pulse-slow" style={{ animationDelay: '2s' }}></div>
       </div>
 
-      <div className="max-w-[1600px] mx-auto relative z-10">
+      <div className="max-w-[1720px] mx-auto px-4 py-6 md:px-8 md:py-10">
         
-        {/* Header */}
-        <header className="mb-6 lg:mb-8 flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-white/5 pb-6">
-          <div>
-            <div className="flex items-center gap-3 mb-2">
-              <div className="relative group cursor-default">
-                <div className="absolute inset-0 bg-indigo-500 blur opacity-30 group-hover:opacity-60 transition-opacity"></div>
-                <div className="relative p-2.5 bg-slate-900 rounded-xl border border-indigo-500/30 text-indigo-400 group-hover:border-indigo-400/50 transition-colors">
-                  <Terminal className="w-6 h-6" />
-                </div>
-              </div>
-              <div>
-                <h1 className="text-2xl md:text-3xl font-bold text-white tracking-tight">
-                  DevCard <span className="text-indigo-400 font-light">Sim</span>
-                </h1>
-                <div className="flex items-center gap-2 mt-1">
-                  <span className="px-2 py-0.5 rounded text-[10px] font-bold tracking-wider bg-indigo-500 text-white shadow-[0_0_10px_rgba(99,102,241,0.5)]">v7.0</span>
-                  <span className="text-xs text-slate-500 font-mono hidden sm:inline-block">High-Performance Generator</span>
-                </div>
+        {/* Header - Compact & Premium */}
+        <header className="mb-10 flex flex-col md:flex-row items-center justify-between gap-6 border-b border-white/5 pb-8">
+          <div className="flex items-center gap-5">
+            <div className="relative group">
+               <div className="absolute inset-0 bg-sky-500 blur-xl opacity-20 group-hover:opacity-40 transition-opacity"></div>
+               <div className="relative p-3.5 bg-slate-900 rounded-2xl border border-sky-500/30 shadow-2xl">
+                 <Terminal className="w-8 h-8 text-sky-400" />
+               </div>
+            </div>
+            <div>
+              <h1 className="text-3xl font-extrabold text-white tracking-tight flex items-center gap-3">
+                QUANTUM <span className="font-light text-slate-500 italic">NODE</span>
+              </h1>
+              <div className="flex items-center gap-3 mt-1.5">
+                <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-sky-500 text-slate-950 uppercase tracking-widest shadow-lg shadow-sky-500/20">v9.0</span>
+                <div className="h-1 w-1 rounded-full bg-slate-700"></div>
+                <span className="text-[10px] text-slate-500 font-black uppercase tracking-[0.2em]">Neural Simulation Grid</span>
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2 px-4 py-2 bg-rose-500/5 border border-rose-500/20 rounded-lg text-rose-400 text-xs font-semibold backdrop-blur-md">
-            <AlertTriangle className="w-3.5 h-3.5" />
-            <span>DEV ONLY</span>
+
+          <div className="flex flex-wrap items-center gap-4 justify-center">
+             <div className="flex items-center gap-2.5 px-5 py-2.5 bg-slate-900/50 border border-white/5 rounded-2xl backdrop-blur-md">
+                <div className="relative w-2 h-2">
+                   <div className="absolute inset-0 bg-emerald-500 rounded-full animate-ping opacity-75"></div>
+                   <div className="relative w-2 h-2 rounded-full bg-emerald-500"></div>
+                </div>
+                <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">Grid Operational</span>
+             </div>
+             <div className="hidden lg:flex items-center gap-2.5 px-5 py-2.5 bg-slate-900/50 border border-white/5 rounded-2xl backdrop-blur-md">
+                <Layers className="w-4 h-4 text-sky-500/50" />
+                <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">Encrypted Stream</span>
+             </div>
           </div>
         </header>
 
-        <main className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start">
           
-          {/* Left Column: Controls (Sticky on Desktop, Stacked on Mobile) */}
-          <div className="lg:col-span-4 xl:col-span-3 space-y-6 lg:sticky lg:top-8 z-20">
+          {/* Dashboard Left Rail */}
+          <div className="xl:col-span-3 space-y-6 lg:sticky lg:top-10">
             
-            {/* Master Preview - Hidden on Mobile for Space */}
-            <div className="hidden lg:block perspective-1000 w-full transform transition-all hover:scale-[1.02] duration-500">
-               <div className="mb-2 text-[10px] uppercase tracking-widest text-slate-500 font-bold ml-1 flex justify-between">
-                 <span>Master Preview</span>
-                 <span className="text-indigo-400">{COUNTRIES.find(c => c.code === country)?.name}</span>
+            {/* Intelligence Node */}
+            <div className="glass-card rounded-[2rem] p-7 border-sky-500/10 shadow-sky-500/5 relative overflow-hidden group">
+               <div className="absolute top-0 left-0 w-full h-1 bg-sky-500/30"></div>
+               <div className="absolute bottom-0 right-0 w-32 h-32 bg-sky-500/5 blur-3xl rounded-full"></div>
+               
+               <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center gap-3">
+                     <Search className="w-4 h-4 text-sky-400" />
+                     <span className="text-[11px] font-black uppercase tracking-[0.25em] text-slate-400">Node Analysis</span>
+                  </div>
+                  {isIntelLoading && <div className="w-1.5 h-1.5 rounded-full bg-sky-500 animate-pulse"></div>}
                </div>
-              <VisualCard bin={bin} previewCard={cards[0]} />
-            </div>
 
-            {/* Config Panel */}
-            <div className="glass-panel p-5 md:p-6 rounded-2xl animate-slide-up" style={{ animationDelay: '100ms' }}>
-              
-              {/* Country Selector */}
-              <div className="mb-6">
-                <label className="text-[10px] font-bold text-slate-400 mb-3 uppercase tracking-wider flex items-center gap-2">
-                    <Globe className="w-3 h-3 text-indigo-400" />
-                    Target Region
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  {COUNTRIES.map((c) => (
-                    <button
-                      key={c.code}
-                      onClick={() => setCountry(c.code)}
-                      className={`flex items-center gap-2 px-3 py-2.5 rounded-lg text-xs font-medium transition-all border touch-manipulation ${
-                        country === c.code 
-                          ? 'bg-indigo-600/20 border-indigo-500/50 text-white shadow-[0_0_10px_rgba(79,70,229,0.2)]' 
-                          : 'bg-slate-800/50 border-slate-700/50 text-slate-400 hover:bg-slate-700/50 hover:text-slate-200'
-                      }`}
-                    >
-                      <span className="text-lg">{c.flag}</span>
-                      <span>{c.name}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Quick Templates */}
-              <div className="mb-6">
-                 <label className="text-[10px] font-bold text-slate-400 mb-3 uppercase tracking-wider flex items-center gap-2">
-                    <Sparkles className="w-3 h-3 text-indigo-400" />
-                    Quick Templates
-                 </label>
-                 <div className="grid grid-cols-3 gap-2">
-                    <button onClick={() => setTemplate('4')} className="flex items-center justify-center gap-1.5 py-3 lg:py-2 px-1 bg-slate-800/50 hover:bg-blue-900/30 border border-slate-700 hover:border-blue-500/50 rounded-lg transition-all text-[10px] font-semibold text-slate-300 hover:text-white group touch-manipulation">
-                        <div className="w-1.5 h-1.5 rounded-full bg-blue-500 group-hover:shadow-[0_0_8px_rgba(59,130,246,0.8)]"></div> Visa
-                    </button>
-                    <button onClick={() => setTemplate('5')} className="flex items-center justify-center gap-1.5 py-3 lg:py-2 px-1 bg-slate-800/50 hover:bg-orange-900/30 border border-slate-700 hover:border-orange-500/50 rounded-lg transition-all text-[10px] font-semibold text-slate-300 hover:text-white group touch-manipulation">
-                        <div className="w-1.5 h-1.5 rounded-full bg-orange-500 group-hover:shadow-[0_0_8px_rgba(249,115,22,0.8)]"></div> MC
-                    </button>
-                    <button onClick={() => setTemplate('37')} className="flex items-center justify-center gap-1.5 py-3 lg:py-2 px-1 bg-slate-800/50 hover:bg-emerald-900/30 border border-slate-700 hover:border-emerald-500/50 rounded-lg transition-all text-[10px] font-semibold text-slate-300 hover:text-white group touch-manipulation">
-                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 group-hover:shadow-[0_0_8px_rgba(16,185,129,0.8)]"></div> Amex
-                    </button>
-                    <button onClick={() => setTemplate('35')} className="flex items-center justify-center gap-1.5 py-3 lg:py-2 px-1 bg-slate-800/50 hover:bg-rose-900/30 border border-slate-700 hover:border-rose-500/50 rounded-lg transition-all text-[10px] font-semibold text-slate-300 hover:text-white group touch-manipulation">
-                        <div className="w-1.5 h-1.5 rounded-full bg-rose-500 group-hover:shadow-[0_0_8px_rgba(244,63,94,0.8)]"></div> JCB
-                    </button>
-                    <button onClick={() => setTemplate('62')} className="flex items-center justify-center gap-1.5 py-3 lg:py-2 px-1 bg-slate-800/50 hover:bg-cyan-900/30 border border-slate-700 hover:border-cyan-500/50 rounded-lg transition-all text-[10px] font-semibold text-slate-300 hover:text-white group touch-manipulation">
-                        <div className="w-1.5 h-1.5 rounded-full bg-cyan-500 group-hover:shadow-[0_0_8px_rgba(6,182,212,0.8)]"></div> Union
-                    </button>
-                    <button onClick={() => setTemplate('6521')} className="flex items-center justify-center gap-1.5 py-3 lg:py-2 px-1 bg-slate-800/50 hover:bg-green-900/30 border border-slate-700 hover:border-green-500/50 rounded-lg transition-all text-[10px] font-semibold text-slate-300 hover:text-white group touch-manipulation">
-                        <div className="w-1.5 h-1.5 rounded-full bg-green-500 group-hover:shadow-[0_0_8px_rgba(34,197,94,0.8)]"></div> RuPay
-                    </button>
-                 </div>
-              </div>
-
-              <div className="space-y-6">
-                {/* BIN Input - Text-base for iOS zoom prevention */}
-                <div className="group">
-                  <label className="flex justify-between text-[10px] font-bold text-slate-400 mb-2 uppercase tracking-wider group-focus-within:text-indigo-400 transition-colors">
-                    <span>BIN Prefix</span>
-                    <span className="text-slate-600 font-mono">Real-time Analysis</span>
-                  </label>
+               <div className="space-y-5">
                   <div className="relative">
-                    <input
-                      type="text"
+                    <input 
+                      type="text" 
                       value={bin}
                       onChange={(e) => {
-                        const val = e.target.value.replace(/\D/g, '');
-                        if (val.length <= 15) setBin(val);
+                        const v = e.target.value.replace(/\D/g, '').slice(0, 15);
+                        setBin(v);
+                        if (v.length >= 6) handleIntelLookup(v);
                       }}
-                      className="glass-input w-full rounded-xl px-4 py-3 text-base lg:text-xl font-mono text-white tracking-widest placeholder-slate-700 focus:outline-none"
-                      placeholder="551827"
+                      className="quantum-input w-full rounded-2xl px-6 py-5 text-2xl font-mono text-white tracking-[0.3em] placeholder-slate-800"
+                      placeholder="XXXXXX"
                       inputMode="numeric"
                     />
-                    
-                    {/* Live Badge in Input */}
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2 pointer-events-none">
-                       {binAnalysis && (
-                          <div className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wide border shadow-sm ${
-                             binAnalysis.scheme === 'Mastercard' ? 'bg-orange-500/20 text-orange-400 border-orange-500/30' :
-                             binAnalysis.scheme === 'Visa' ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' :
-                             binAnalysis.scheme === 'Amex' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' :
-                             'bg-slate-700 text-slate-300 border-slate-600'
-                          }`}>
-                            {binAnalysis.scheme}
-                          </div>
-                       )}
+                    <div className="absolute right-5 top-1/2 -translate-y-1/2 pointer-events-none">
+                       <Zap className={`w-5 h-5 transition-colors duration-500 ${intel ? 'text-sky-400' : 'text-slate-800'}`} />
                     </div>
                   </div>
-                  
-                  {/* Expanded Analysis Panel */}
-                  {binAnalysis && binAnalysis.scheme !== 'Unknown' && (
-                     <div className="mt-3 p-3 bg-slate-800/50 border border-slate-700/50 rounded-lg animate-fade-in">
-                        <div className="flex items-start gap-3">
-                           <div className="p-2 bg-indigo-500/10 rounded-lg border border-indigo-500/20">
-                              <ShieldCheck className="w-4 h-4 text-indigo-400" />
-                           </div>
-                           <div className="flex-1 space-y-1">
-                              <div className="flex justify-between items-center">
-                                 <span className="text-[10px] uppercase text-slate-500 font-bold">Industry</span>
-                                 <span className="text-[10px] text-slate-300">{binAnalysis.industry}</span>
-                              </div>
-                              <div className="w-full h-px bg-white/5 my-1"></div>
-                              <div className="flex justify-between items-center">
-                                 <span className="text-[10px] uppercase text-slate-500 font-bold">Length</span>
-                                 <span className="text-[10px] text-slate-300">{bin.startsWith('34') || bin.startsWith('37') ? '15 Digits' : '16 Digits'}</span>
-                              </div>
-                           </div>
-                        </div>
-                     </div>
+
+                  {intel ? (
+                    <div className="bg-slate-950/80 rounded-2xl border border-white/5 p-5 space-y-4 animate-slide-up">
+                       <div className="flex items-start gap-4">
+                          <div className="p-2.5 bg-sky-500/10 rounded-xl border border-sky-500/20">
+                             <Landmark className="w-4 h-4 text-sky-400" />
+                          </div>
+                          <div className="min-w-0">
+                             <p className="text-[9px] uppercase font-black text-slate-500 tracking-widest mb-1">Issuer Oracle</p>
+                             <p className="text-sm font-bold text-white truncate">{intel.bank || 'External Node'}</p>
+                          </div>
+                       </div>
+                       <div className="grid grid-cols-2 gap-4 pt-4 border-t border-white/5">
+                          <div className="space-y-1">
+                             <p className="text-[9px] uppercase font-black text-slate-500 tracking-widest">Protocol</p>
+                             <p className="text-[10px] text-sky-300 font-black uppercase">{intel.level || 'Standard'}</p>
+                          </div>
+                          <div className="space-y-1">
+                             <p className="text-[9px] uppercase font-black text-slate-500 tracking-widest">Modality</p>
+                             <p className="text-[10px] text-white font-black uppercase">{intel.type || 'Universal'}</p>
+                          </div>
+                       </div>
+                    </div>
+                  ) : (
+                    <div className="py-10 text-center border-2 border-dashed border-slate-900 rounded-3xl group-hover:border-slate-800 transition-colors">
+                       <p className="text-[10px] text-slate-600 font-bold uppercase tracking-widest">Scan BIN for Intel</p>
+                    </div>
                   )}
-                </div>
+               </div>
+            </div>
 
-                {/* Quantity Slider */}
-                <div>
-                  <div className="flex justify-between text-[10px] font-bold text-slate-400 mb-3 uppercase tracking-wider">
-                    <span>Quantity</span>
-                    <span className="text-indigo-400 bg-indigo-400/10 px-2 py-0.5 rounded border border-indigo-400/20 font-mono">{quantity}</span>
+            {/* Config Sub-panel */}
+            <div className="glass-card rounded-[2rem] p-7 space-y-8">
+               
+               {/* Country Node */}
+               <div>
+                  <div className="flex items-center gap-3 mb-5">
+                    <Globe className="w-4 h-4 text-slate-500" />
+                    <span className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">Target Region</span>
                   </div>
-                  <input
-                    type="range"
-                    min="1"
-                    max="50"
-                    step="1"
-                    value={quantity}
-                    onChange={(e) => setQuantity(parseInt(e.target.value))}
-                    className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500 hover:accent-indigo-400 transition-all touch-none"
-                  />
-                  <div className="flex justify-between text-[10px] text-slate-600 font-mono mt-1">
-                    <span>1</span>
-                    <span className="cursor-pointer hover:text-indigo-400 p-2 -m-2" onClick={() => setQuantity(5)}>5</span>
-                    <span>50</span>
+                  <div className="grid grid-cols-2 gap-2">
+                    {COUNTRIES.map(c => (
+                      <button 
+                        key={c.code}
+                        onClick={() => setCountry(c.code)}
+                        className={`flex items-center gap-3 p-3 rounded-xl border transition-all duration-300 group ${
+                          country === c.code ? 'bg-sky-600/20 border-sky-500/50 text-white shadow-lg' : 'bg-slate-950/50 border-white/5 text-slate-500 hover:text-slate-300 hover:border-white/10'
+                        }`}
+                      >
+                        <span className="text-lg group-hover:scale-110 transition-transform">{c.flag}</span>
+                        <span className="text-[10px] font-black uppercase">{c.code}</span>
+                      </button>
+                    ))}
                   </div>
-                </div>
+               </div>
 
-                <button
-                  onClick={handleGenerate}
-                  disabled={bin.length < 1}
-                  className="w-full mt-2 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3.5 px-6 rounded-xl shadow-[0_0_20px_rgba(79,70,229,0.3)] transition-all active:scale-[0.98] flex items-center justify-center gap-3 group relative overflow-hidden"
-                >
-                  <RefreshCw className="w-5 h-5 relative z-10 group-hover:rotate-180 transition-transform duration-500" />
-                  <span className="relative z-10">Generate New Batch</span>
-                </button>
-              </div>
+               {/* Batch Node */}
+               <div>
+                 <div className="flex justify-between items-center mb-5">
+                    <div className="flex items-center gap-3">
+                       <Settings2 className="w-4 h-4 text-slate-500" />
+                       <span className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">Batch Load</span>
+                    </div>
+                    <span className="text-xs font-mono text-sky-400 font-black">{quantity} Units</span>
+                 </div>
+                 <input 
+                   type="range" min="1" max="50" value={quantity} 
+                   onChange={(e) => setQuantity(parseInt(e.target.value))}
+                   className="w-full h-1.5 bg-slate-900 rounded-full appearance-none cursor-pointer accent-sky-500"
+                 />
+                 <div className="flex justify-between mt-3 px-1">
+                    <span className="text-[9px] font-bold text-slate-700">MIN_1</span>
+                    <span className="text-[9px] font-bold text-slate-700">MAX_50</span>
+                 </div>
+               </div>
+
+               <button 
+                onClick={handleGenerate}
+                className="w-full bg-white text-slate-950 font-black text-xs uppercase tracking-[0.3em] py-5 rounded-2xl hover:bg-sky-400 transition-all flex items-center justify-center gap-3 shadow-2xl shadow-sky-500/10 active:scale-95 group"
+               >
+                 <RefreshCw className="w-4 h-4 group-active:rotate-180 transition-transform duration-500" /> Initialize Batch
+               </button>
+            </div>
+
+            {/* Quick Access */}
+            <div className="glass-card rounded-[2rem] p-7">
+               <div className="flex items-center gap-3 mb-6">
+                  <Database className="w-4 h-4 text-slate-500" />
+                  <span className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">Preset Library</span>
+               </div>
+               <div className="grid grid-cols-1 gap-3">
+                  {BIN_LIBRARY.map(lib => (
+                    <button 
+                      key={lib.bin}
+                      onClick={() => setTemplate(lib.bin)}
+                      className="w-full text-left p-4 rounded-2xl border border-white/5 bg-slate-950/50 hover:bg-sky-500/5 hover:border-sky-500/20 transition-all flex items-center justify-between group"
+                    >
+                      <div className="flex items-center gap-4">
+                         <div className={`p-2 rounded-lg bg-slate-900 border border-white/5 ${lib.color}`}>
+                            <lib.icon className="w-4 h-4" />
+                         </div>
+                         <div className="min-w-0">
+                            <p className="text-[10px] font-black uppercase text-white truncate">{lib.label}</p>
+                            <p className="text-[9px] text-slate-600 mt-0.5 truncate">{lib.desc}</p>
+                         </div>
+                      </div>
+                      <Box className="w-3.5 h-3.5 text-slate-800 group-hover:text-sky-500/40 transition-colors" />
+                    </button>
+                  ))}
+               </div>
             </div>
           </div>
 
-          {/* Right Column: Results */}
-          <div className="lg:col-span-8 xl:col-span-9 flex flex-col h-[600px] lg:h-[calc(100vh-120px)] animate-slide-up" style={{ animationDelay: '200ms' }}>
-            <div className="glass-panel flex-1 rounded-2xl overflow-hidden flex flex-col border border-white/10">
-              
-              {/* Toolbar */}
-              <div className="px-4 md:px-6 py-4 border-b border-white/5 flex flex-wrap gap-4 justify-between items-center bg-white/[0.02]">
-                <div className="flex items-center gap-3 md:gap-4 overflow-x-auto no-scrollbar max-w-full">
-                  {/* View Toggles */}
-                  <div className="flex bg-slate-900/50 p-1 rounded-lg border border-slate-700/50 shrink-0">
-                    <button 
-                      onClick={() => setViewMode('grid')}
-                      className={`p-1.5 rounded-md transition-all ${viewMode === 'grid' ? 'bg-indigo-500 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
-                      title="Grid View"
-                    >
-                      <LayoutGrid className="w-4 h-4" />
-                    </button>
-                    <button 
-                      onClick={() => setViewMode('list')}
-                      className={`p-1.5 rounded-md transition-all ${viewMode === 'list' ? 'bg-indigo-500 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
-                      title="List View"
-                    >
-                      <List className="w-4 h-4" />
-                    </button>
+          {/* Grid Viewport */}
+          <div className="xl:col-span-9 flex flex-col min-h-[800px]">
+            
+            {/* Viewport Control Bar */}
+            <div className="glass-card rounded-3xl p-4 mb-6 flex flex-wrap items-center justify-between gap-6">
+               <div className="flex items-center gap-4">
+                  <div className="flex bg-slate-950 p-1.5 rounded-2xl border border-white/5">
+                     <button onClick={() => setViewMode('grid')} className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${viewMode === 'grid' ? 'bg-sky-600 text-white shadow-xl shadow-sky-600/20' : 'text-slate-500 hover:text-slate-300'}`}>
+                        <LayoutGrid className="w-4 h-4" /> <span className="hidden sm:inline">Grid</span>
+                     </button>
+                     <button onClick={() => setViewMode('list')} className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${viewMode === 'list' ? 'bg-sky-600 text-white shadow-xl shadow-sky-600/20' : 'text-slate-500 hover:text-slate-300'}`}>
+                        <List className="w-4 h-4" /> <span className="hidden sm:inline">Stream</span>
+                     </button>
                   </div>
-
-                  {/* Billing Details Toggle */}
+                  <div className="h-8 w-px bg-white/5 hidden md:block"></div>
                   <button 
                     onClick={() => setDetailedBilling(!detailedBilling)}
-                    className={`shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
-                        detailedBilling 
-                        ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400' 
-                        : 'bg-slate-800/50 border-slate-700/50 text-slate-400 hover:text-slate-200'
+                    className={`flex items-center gap-3 px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border ${
+                        detailedBilling ? 'bg-sky-500/10 border-sky-500/30 text-sky-400' : 'bg-slate-950 border-white/5 text-slate-600 hover:text-slate-400'
                     }`}
                   >
                      {detailedBilling ? <ToggleRight className="w-4 h-4" /> : <ToggleLeft className="w-4 h-4" />}
-                     <span className="hidden sm:inline">{detailedBilling ? 'Detailed Billing' : 'Simplified'}</span>
-                     <span className="sm:hidden">{detailedBilling ? 'Detail' : 'Simple'}</span>
+                     <span>Depth Analysis</span>
                   </button>
+               </div>
 
-                  <div className="h-4 w-px bg-slate-700 mx-1 hidden md:block"></div>
-                  
-                  <div className="text-sm font-medium text-slate-400 hidden md:block">
-                    <span className="text-white font-mono">{cards.length}</span> Results
+               <div className="flex items-center gap-4">
+                  <div className="flex -space-x-2">
+                     {[...Array(3)].map((_, i) => <div key={i} className="w-6 h-6 rounded-full border-2 border-slate-900 bg-slate-800"></div>)}
+                     <div className="w-6 h-6 rounded-full border-2 border-slate-900 bg-sky-600 flex items-center justify-center text-[8px] font-black">{cards.length}</div>
                   </div>
-                </div>
-                
-                <button 
-                  onClick={exportJSON}
-                  className="shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-indigo-900/30 text-xs font-medium text-slate-300 hover:text-white transition-all border border-slate-700 hover:border-indigo-500/50"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  JSON
-                </button>
-              </div>
+                  <button onClick={exportJSON} className="p-3.5 rounded-2xl bg-slate-950 border border-white/10 text-slate-400 hover:text-sky-400 hover:border-sky-500/30 transition-all shadow-xl">
+                     <Share2 className="w-4 h-4" />
+                  </button>
+               </div>
+            </div>
 
-              {/* Content Area */}
-              <div className="flex-1 overflow-y-auto custom-scrollbar bg-[#0f172a]/40 p-4 lg:p-6">
-                
-                {viewMode === 'grid' ? (
-                  // GRID VIEW
-                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 md:gap-6">
-                    {cards.map((card, index) => (
-                        <GridItem 
-                            key={card.id} 
-                            card={card} 
-                            bin={bin} 
-                            detailedBilling={detailedBilling} 
-                            copiedId={copiedId} 
-                            onCopy={copyToClipboard} 
-                        />
-                    ))}
-                  </div>
-                ) : (
-                  // LIST VIEW
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse min-w-[600px]">
-                        <thead className="sticky top-0 bg-[#0f172a] z-10 shadow-lg border-b border-white/5">
-                        <tr className="text-[10px] md:text-xs text-slate-400 uppercase tracking-wider font-semibold">
-                            <th className="px-6 py-4">Identity Profile</th>
-                            <th className="px-6 py-4 hidden md:table-cell">
-                                {detailedBilling ? 'Detailed Address' : 'Contact & Address'}
-                            </th>
-                            <th className="px-6 py-4 text-center hidden sm:table-cell">Card Details</th>
-                            <th className="px-6 py-4 text-right">Action</th>
-                        </tr>
-                        </thead>
-                        <tbody className="divide-y divide-white/5">
-                        {cards.map((card, index) => (
-                            <ListItem 
-                                key={card.id} 
+            {/* Data Stream */}
+            <div className="flex-1 glass-card rounded-[3rem] p-6 md:p-10 relative overflow-hidden flex flex-col">
+               {/* Decorative Grid Lines */}
+               <div className="absolute inset-0 opacity-[0.02] pointer-events-none" style={{ backgroundImage: 'linear-gradient(90deg, #fff 1px, transparent 0), linear-gradient(#fff 1px, transparent 0)', backgroundSize: '100px 100px' }}></div>
+               
+               <div className="flex-1 overflow-y-auto no-scrollbar scroll-smooth">
+                  {cards.length > 0 ? (
+                    viewMode === 'grid' ? (
+                      <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-8">
+                         {cards.map((card, i) => (
+                           <div key={card.id} className="animate-slide-up" style={{ animationDelay: `${i * 0.05}s` }}>
+                             <GridItem 
                                 card={card} 
-                                index={index} 
+                                bin={bin} 
                                 detailedBilling={detailedBilling} 
                                 copiedId={copiedId} 
-                                onCopy={copyToClipboard} 
-                            />
-                        ))}
-                        </tbody>
-                    </table>
-                  </div>
-                )}
-                
-                {cards.length === 0 && (
-                    <div className="flex flex-col items-center justify-center h-48 text-slate-500">
-                        <CreditCard className="w-8 h-8 mb-2 opacity-20" />
-                        <p className="text-xs tracking-widest uppercase opacity-50">System Standby</p>
+                                onCopy={copyToClipboard}
+                                bankName={intel?.bank}
+                             />
+                           </div>
+                         ))}
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        <table className="w-full text-left border-separate border-spacing-y-3">
+                           <thead className="text-[10px] text-slate-600 uppercase font-black tracking-[0.3em] px-4">
+                              <tr>
+                                 <th className="pb-4 pl-6">Operator Node</th>
+                                 <th className="pb-4">Payment Modality</th>
+                                 <th className="pb-4 text-right pr-6">Command</th>
+                              </tr>
+                           </thead>
+                           <tbody className="divide-y divide-white/[0.02]">
+                              {cards.map(card => (
+                                <tr key={card.id} className="group glass-card rounded-2xl">
+                                   <td className="py-6 pl-6 rounded-l-3xl">
+                                      <div className="flex items-center gap-4">
+                                         <div className="w-10 h-10 rounded-xl bg-slate-900 border border-white/5 flex items-center justify-center text-sky-500">
+                                            <User className="w-5 h-5" />
+                                         </div>
+                                         <div>
+                                            <p className="font-bold text-slate-200 text-sm">{card.holderName}</p>
+                                            <p className="text-[10px] text-slate-500 mt-1 font-mono uppercase">{card.address.city}, {card.address.country}</p>
+                                         </div>
+                                      </div>
+                                   </td>
+                                   <td className="py-6">
+                                      <div className="inline-flex items-center gap-4 bg-slate-950 px-5 py-2.5 rounded-2xl border border-white/5 font-mono text-xs shadow-inner">
+                                         <span className="text-sky-400 font-bold">{card.number}</span>
+                                         <span className="text-slate-800">/</span>
+                                         <span className="text-slate-400">{card.expiryMonth}•{card.expiryYear.slice(-2)}</span>
+                                         <span className="text-slate-800">/</span>
+                                         <span className="text-yellow-600 font-bold">{card.cvv}</span>
+                                      </div>
+                                   </td>
+                                   <td className="py-6 text-right pr-6 rounded-r-3xl">
+                                      <button 
+                                        onClick={() => copyToClipboard(card)} 
+                                        className={`p-3 rounded-xl transition-all duration-300 border ${
+                                            copiedId === card.id ? 'bg-sky-500 text-white shadow-xl shadow-sky-500/20' : 'bg-slate-900 border-white/5 text-slate-500 hover:text-sky-400 hover:border-sky-500/20'
+                                        }`}
+                                      >
+                                         {copiedId === card.id ? <Check className="w-5 h-5" /> : <Copy className="w-5 h-5" />}
+                                      </button>
+                                   </td>
+                                </tr>
+                              ))}
+                           </tbody>
+                        </table>
+                      </div>
+                    )
+                  ) : (
+                    <div className="flex flex-col items-center justify-center h-full text-center py-20">
+                       <div className="relative mb-8">
+                          <div className="absolute inset-0 bg-sky-500 blur-3xl opacity-10 animate-pulse"></div>
+                          <Box className="w-20 h-20 text-slate-800 relative z-10" />
+                       </div>
+                       <h3 className="text-xl font-black text-slate-700 uppercase tracking-[0.2em] mb-3">Void Node Detected</h3>
+                       <p className="text-xs text-slate-600 uppercase font-bold tracking-widest">Initialize neural grid to stream identities</p>
                     </div>
-                )}
-              </div>
-            </div>
-            
-            <div className="mt-4 text-center">
-                <p className="text-[10px] text-slate-600 font-mono">
-                    SECURE SIMULATION ENVIRONMENT • {generatedAt.toLocaleTimeString()}
-                </p>
+                  )}
+               </div>
+
+               {/* Footer Insight Bar */}
+               <div className="mt-8 pt-8 border-t border-white/5 flex flex-wrap items-center justify-center gap-x-12 gap-y-4">
+                  <div className="flex items-center gap-3 text-[10px] font-black text-slate-600 uppercase tracking-[0.25em]">
+                     <Landmark className="w-4 h-4 text-sky-500/30" /> Issuer Prediction: AI Node v2
+                  </div>
+                  <div className="flex items-center gap-3 text-[10px] font-black text-slate-600 uppercase tracking-[0.25em]">
+                     <ShieldCheck className="w-4 h-4 text-emerald-500/30" /> Protocol: Luhn-10 Validated
+                  </div>
+                  <div className="flex items-center gap-3 text-[10px] font-black text-slate-600 uppercase tracking-[0.25em]">
+                     <Info className="w-4 h-4 text-slate-700" /> Usage: Test Node Simulation
+                  </div>
+               </div>
             </div>
           </div>
 
-        </main>
+        </div>
       </div>
+
+      <footer className="mt-12 pb-10 text-center">
+         <div className="inline-flex items-center gap-4 px-6 py-2.5 bg-slate-900/40 rounded-full border border-white/5 backdrop-blur-md">
+            <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest">Quantum Engine Pulse: {new Date().toLocaleTimeString()}</span>
+            <div className="h-4 w-px bg-white/5"></div>
+            <a href="#" className="text-[10px] font-black text-sky-400 hover:text-white uppercase tracking-widest transition-colors">Neural Documentation</a>
+         </div>
+      </footer>
     </div>
   );
 }
